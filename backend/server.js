@@ -5,6 +5,7 @@ require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') }
 
 const { analyzeURLHeuristics } = require('./utils/heuristics');
 const { checkGoogleSafeBrowsing, checkVirusTotal, checkWHOISDomainAge } = require('./utils/threatIntel');
+const qrAnalyzer = require('./utils/qrAnalyzer');  // ADD THIS LINE
 
 const app = express();
 app.use(cors());
@@ -40,6 +41,9 @@ app.post('/analyze/full', async (req, res) => {
       checkWHOISDomainAge(url),
     ]);
 
+    // Layer B.5: CNN QR Analysis (NEW!)
+    const cnnResult = await qrAnalyzer.analyzeQRImage(url);
+
     // Combine results
     let finalRiskLevel = heuristicsResult.riskLevel;
     let details = [...heuristicsResult.details];
@@ -59,6 +63,14 @@ app.post('/analyze/full', async (req, res) => {
       details.push(`⚠️ Domain age: ${whoisResult.ageInDays} days (very new)`);
     }
 
+    // Add CNN analysis to details
+    if (cnnResult.isTampered) {
+      finalRiskLevel = 'red';
+      details.push(`⚠️ CNN QR Analysis: ${cnnResult.reason}`);
+    } else {
+      details.push(`✅ CNN QR Analysis: ${cnnResult.reason}`);
+    }
+
     res.json({
       url,
       layerA: heuristicsResult,
@@ -67,6 +79,7 @@ app.post('/analyze/full', async (req, res) => {
         virusTotal: virusTotalResult,
         whois: whoisResult,
       },
+      layerB5: cnnResult,  // NEW CNN LAYER
       finalRiskLevel,
       details,
       recommendation: finalRiskLevel === 'red' ? '⛔ DO NOT CLICK' : finalRiskLevel === 'yellow' ? '⚠️ BE CAREFUL' : '✅ SAFE',
